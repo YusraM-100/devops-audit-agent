@@ -168,6 +168,7 @@ def write_json(path: str | Path, data) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2, ensure_ascii=False)
             fh.write("\n")
+        os.chmod(tmp, 0o644)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)

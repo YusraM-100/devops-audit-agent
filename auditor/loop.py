@@ -16,7 +16,7 @@ import logging
 import time
 from pathlib import Path
 
-from auditor.llm import LLMResponse
+from auditor.llm import LLMError, LLMResponse
 from auditor.prompts import BUDGET_WARNING, CONTROL_TOOLS, SYSTEM_PROMPT, review_message, start_message
 from auditor.redact import redact, redact_obj
 from auditor.report import Findings
@@ -36,7 +36,7 @@ class Trace:
         self.events: list[dict] = []
         if self.path:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text("")
+            self.path.write_text("", encoding="utf-8")
 
     def add(self, **event) -> None:
         event = redact_obj({"t": round(time.time(), 3), **event})
@@ -78,7 +78,12 @@ class AuditAgent:
                 self._append_user(BUDGET_WARNING)
                 self.budget_warned = True
             self._trim_history()
-            response: LLMResponse = self.llm.chat(SYSTEM_PROMPT, self.messages, self.tool_schemas)
+            try:
+                response: LLMResponse = self.llm.chat(SYSTEM_PROMPT, self.messages, self.tool_schemas)
+            except LLMError as exc:
+                self.stop_reason = f"LLM error: {exc}"
+                self.trace.add(type="end", reason=self.stop_reason, tool_calls=self.tool_calls, violations=len(self.findings.active()))
+                raise
             self.trace.add(
                 type="llm",
                 step=step,

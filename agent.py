@@ -33,16 +33,22 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 def main(argv=None, llm=None) -> int:
     args = parse_args(argv)
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(errors="replace")  # Windows consoles cannot print every character the LLM writes
     logging.basicConfig(level=logging.WARNING if args.quiet else logging.INFO, format="%(message)s", stream=sys.stderr)
     log = logging.getLogger("auditor")
     try:
-        from dotenv import load_dotenv
+        from dotenv import find_dotenv, load_dotenv
 
-        load_dotenv()
+        # .env in the current directory first, then next to agent.py
+        load_dotenv(find_dotenv(usecwd=True))
+        load_dotenv(Path(__file__).resolve().parent / ".env")
     except ImportError:
         pass
 
     repo_info = None
+    agent = None
+    url = args.repo
     try:
         url = normalize_repo_url(args.repo)
         llm = llm or client_from_env()  # fail fast on missing credentials, before cloning
@@ -68,6 +74,11 @@ def main(argv=None, llm=None) -> int:
         return 0
     except (RepoError, LLMError) as exc:
         print(f"error: {exc}", file=sys.stderr)
+        if agent is not None and agent.findings.active():
+            # Keep what was confirmed before the failure, but still exit non-zero: the audit is incomplete.
+            partial = args.output.removesuffix(".json") + ".partial.json"
+            write_json(partial, build_report(url, agent.findings.active()))
+            print(f"error: audit incomplete; {len(agent.findings.active())} confirmed violation(s) saved to {partial}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("error: interrupted", file=sys.stderr)

@@ -91,7 +91,7 @@ def test_trace_is_written_and_has_no_secrets(bad_repo, tmp_path):
     trace_path = tmp_path / "trace.jsonl"
     llm = ScriptedLLM([[("read_file", {"path": "app.py"})], [FINISH]])
     AuditAgent(llm, RepoTools(bad_repo), "repo", trace=Trace(trace_path)).run()
-    text = trace_path.read_text()
+    text = trace_path.read_text(encoding="utf-8")
     events = [json.loads(line) for line in text.splitlines()]
     assert {e["type"] for e in events} >= {"start", "llm", "tool", "finish", "end"}
     assert FAKE_KEY not in text
@@ -103,16 +103,16 @@ def test_cli_end_to_end_writes_valid_report(bad_repo, tmp_path):
     llm = ScriptedLLM([[("list_files", {})], [("report_violation", VIOLATION)], [FINISH], [FINISH]])
     code = agent.main(["--repo", str(bad_repo), "--output", str(out), "-q"], llm=llm)
     assert code == 0
-    report = json.loads(out.read_text())
+    report = json.loads(out.read_text(encoding="utf-8"))
     assert report["violations"][0]["rule_id"] == "SEC-001"
-    assert FAKE_KEY not in out.read_text()
+    assert FAKE_KEY not in out.read_text(encoding="utf-8")
     assert (tmp_path / "report.trace.jsonl").exists()
 
 
 def test_cli_empty_violations_still_writes_report(healthy_repo, tmp_path):
     out = tmp_path / "r.json"
     assert agent.main(["--repo", str(healthy_repo), "--output", str(out), "-q"], llm=ScriptedLLM([[FINISH]])) == 0
-    assert json.loads(out.read_text())["violations"] == []
+    assert json.loads(out.read_text(encoding="utf-8"))["violations"] == []
 
 
 def test_cli_invalid_url_exits_nonzero(tmp_path, capsys):
@@ -150,3 +150,15 @@ def test_missing_credentials_message(monkeypatch):
         assert ".env" in str(exc)
     else:
         raise AssertionError("expected LLMError")
+
+
+def test_llm_failure_mid_run_saves_partial_report_and_exits_nonzero(bad_repo, tmp_path):
+    def boom(messages):
+        raise LLMError("Daily request quota used up")
+
+    out = tmp_path / "r.json"
+    llm = ScriptedLLM([[("report_violation", VIOLATION)], boom])
+    assert agent.main(["--repo", str(bad_repo), "--output", str(out), "-q"], llm=llm) == 1
+    assert not out.exists()
+    partial = json.loads((tmp_path / "r.partial.json").read_text(encoding="utf-8"))
+    assert partial["violations"][0]["rule_id"] == "SEC-001"
