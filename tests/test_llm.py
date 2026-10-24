@@ -140,3 +140,46 @@ def test_anthropic_merges_tool_results_into_one_user_turn():
     assert [m["role"] for m in body["messages"]] == ["user", "assistant", "user"]
     assert body["messages"][2]["content"][0]["type"] == "tool_result"
     assert body["messages"][2]["content"][1] == {"type": "text", "text": "keep going"}
+
+
+def test_daily_quota_switches_to_next_model_and_replaces_foreign_signature():
+    sent = []
+    quota = {
+        "error": {"code": 429, "message": "Generate content requests per day limit exceeded on Free Tier", "status": "RESOURCE_EXHAUSTED"}
+    }
+    ok = {
+        "id": "x",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "m",
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "hi"}}],
+    }
+
+    def handler(request):
+        body = json.loads(request.content)
+        sent.append(body)
+        return httpx.Response(429, json=[quota]) if body["model"] == "big" else httpx.Response(200, json=ok)
+
+    from auditor.llm import ToolCall
+
+    client = OpenAIClient(["big", "small"], "k", "https://llm.invalid/v1")
+    client.client = openai.OpenAI(api_key="k", base_url="https://llm.invalid/v1", http_client=_mock(handler), max_retries=0)
+    old_call = ToolCall("c1", "list_files", {}, extra={"google": {"thought_signature": "SIG"}}, model="big")
+    history = [
+        {"role": "user", "content": "go"},
+        {"role": "assistant", "content": "", "tool_calls": [old_call]},
+        {"role": "tool", "tool_call_id": "c1", "name": "list_files", "content": "a.py"},
+    ]
+    assert client.chat("sys", history, TOOLS).text == "hi"
+    assert [b["model"] for b in sent] == ["big", "small"]
+    assert sent[1]["messages"][2]["tool_calls"][0]["extra_content"]["google"]["thought_signature"] == "skip_thought_signature_validator"
+
+
+def test_daily_quota_on_last_model_is_fatal():
+    def handler(request):
+        return httpx.Response(429, json=[{"error": {"code": 429, "message": "requests per day exceeded"}}])
+
+    client = OpenAIClient(["only"], "k", "https://llm.invalid/v1")
+    client.client = openai.OpenAI(api_key="k", base_url="https://llm.invalid/v1", http_client=_mock(handler), max_retries=0)
+    with pytest.raises(LLMError, match="Daily request quota"):
+        client.chat("sys", [{"role": "user", "content": "go"}], TOOLS)
