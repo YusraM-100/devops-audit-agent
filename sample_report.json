@@ -1,0 +1,45 @@
+{
+  "repository": "https://github.com/we45/Vulnerable-Flask-App",
+  "violations": [
+    {
+      "rule_id": "SEC-001",
+      "category": "security",
+      "severity": "critical",
+      "file": "app/app.py",
+      "line": 26,
+      "description": "Hardcoded secret keys and default admin password in app/app.py",
+      "evidence": "app/app.py:26: app.config['SECRET_KEY_HMAC'] = '...'\napp/app.py:27: app.config['SECRET_KEY_HMAC_2'] = '...'\napp/app.py:28: app.secret_key = '...'\napp/app.py:63: user.password = '...'",
+      "recommendation": "Read secret keys and passwords from environment variables rather than hardcoding them in source code."
+    },
+    {
+      "rule_id": "SEC-007",
+      "category": "security",
+      "severity": "medium",
+      "file": "app/app.py",
+      "line": 329,
+      "description": "Insecure use of yaml.load without SafeLoader allowing arbitrary code execution",
+      "evidence": "app/app.py:329: ydata = yaml.load(y)",
+      "recommendation": "Use yaml.safe_load(y) instead of yaml.load(y) to prevent arbitrary code execution vulnerabilities."
+    },
+    {
+      "rule_id": "CI-005",
+      "category": "ci",
+      "severity": "low",
+      "file": ".github/workflows/zap_test.yml",
+      "line": 49,
+      "description": "Third-party GitHub Action referenced by mutable branch (master) instead of pinned tag or SHA",
+      "evidence": ".github/workflows/zap_test.yml:49: uses: jakejarvis/wait-action@master",
+      "recommendation": "Pin the action to a specific release tag or commit SHA (e.g. jakejarvis/wait-action@v0.1.1 or SHA)."
+    },
+    {
+      "rule_id": "QUA-001",
+      "category": "code_quality",
+      "severity": "low",
+      "file": null,
+      "line": null,
+      "description": "No linting or formatting tool configured in the repository",
+      "evidence": "No linter or formatter configuration (pyproject.toml, setup.cfg, .flake8, ruff.toml, .pre-commit-config.yaml) or CI lint step exists.",
+      "recommendation": "Configure a linter/formatter such as ruff, flake8, or black and integrate it into development and CI workflows."
+    }
+  ]
+}
