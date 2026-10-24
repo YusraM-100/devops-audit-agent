@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Check formatting
+        run: ruff format --check .
+      - name: Run tests
+        run: pytest -v
+      - name: Check sample report matches the output contract
+        if: hashFiles('sample_report.json') != ''
+        run: python -c "import json; from auditor.report import validate_report; r = json.load(open('sample_report.json')); e = validate_report(r); print(e or 'sample_report.json is valid'); raise SystemExit(1 if e else 0)"
