@@ -71,7 +71,9 @@ and a one-line result). When it finishes you get:
 
 **Exit codes:** `0` means the audit completed and the report was written, even when there are zero
 violations. `1` means a fatal error (bad URL, clone failed, missing or invalid API key, LLM unreachable),
-and a clear message goes to stderr. `2` means the command-line arguments were wrong.
+and a clear message goes to stderr. If the LLM fails partway through, the violations already confirmed are
+saved to `<output>.partial.json` so the work isn't lost, but the exit code is still `1` because the audit is
+incomplete. `2` means the command-line arguments were wrong.
 
 ## 2. Configuration
 
@@ -80,7 +82,7 @@ export the variables in your shell instead.
 
 | Provider | Variable | Default model | Notes |
 |---|---|---|---|
-| Google Gemini | `GEMINI_API_KEY` | `gemini-3.8-flash` | Free tier. Get a key at https://aistudio.google.com/apikey |
+| Google Gemini | `GEMINI_API_KEY` | `gemini-3.6-flash`, falling back to `gemini-3.5-flash-lite` and then `gemini-3.1-flash-lite` | Free tier. Get a key at https://aistudio.google.com/apikey |
 | OpenAI | `OPENAI_API_KEY` | `gpt-4o-mini` | |
 | Anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` | |
 | Groq | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | Free tier |
@@ -90,7 +92,7 @@ Optional variables:
 
 | Variable | Meaning |
 |---|---|
-| `LLM_MODEL` | Use a different model from the same provider |
+| `LLM_MODEL` | Use a different model from the same provider. A comma-separated list works as a fallback chain: when one model's **daily** quota runs out, the agent switches to the next model and carries on. |
 | `LLM_PROVIDER` | Force a provider when several keys are set (`gemini`, `openai`, `anthropic`, `groq`) |
 | `LLM_REQUEST_DELAY` | Seconds to wait between LLM calls. Try `4` on free tiers with low rate limits. |
 | `AUDIT_DISABLE_PYTEST=1` | Never run the target repository's tests, even when Docker is available |
@@ -165,10 +167,11 @@ host. Their output passes through the secret redactor and is capped in size.
 | `search_code(pattern, path_glob, case_insensitive)` | required | Regex search over every tracked text file. Returns `file:line: text`. |
 | `git_log(max_count, path)` | required | Commits with date, author, message and changed files, plus commits per author |
 | `search_git_history(pattern)` | extra | Searches added and removed lines in **all** commits (`git log -G`). Finds secrets that were deleted but are still in history. |
-| `git_status()` | extra | Status, branches, tags |
-| `inspect_workflows()` | extra | Parses every GitHub Actions workflow and summarizes triggers, permissions, jobs, `needs`, steps, `continue-on-error`, `if:`, actions used, secrets, and **flags** untrusted `github.event` input in `run:` and printed secrets. Also notes other CI systems (GitLab, CircleCI, Jenkins...). |
+| `scan_secrets(include_history)` | extra | Secret scanner. Flags lines in current files that hold real-looking credentials (API keys, tokens, passwords, private keys, passwords in URLs), secret-bearing files such as `.env` or `id_rsa`, and secrets that were committed and later **removed** from the files but are still in history. Values are always `[REDACTED]`. |
+| `git_status(include_tags)` | extra | Status, branches, tags |
+| `inspect_workflows(file)` | extra | Parses every GitHub Actions workflow and summarizes triggers, permissions, jobs, `needs`, steps, `continue-on-error`, `if:`, actions used, secrets, and **flags** untrusted `github.event` input in `run:` and printed secrets. Also notes other CI systems (GitLab, CircleCI, Jenkins...). |
 | `run_ruff(select)` | extra | Ruff linter, which is static analysis and does not execute code. Uses the repo's own Ruff config when it has one. Results are grouped by rule. |
-| `run_pytest()` | extra | Runs the target's tests **only inside a locked-down Docker container**: read-only mount, no extra Linux privileges, memory, CPU and process limits, and a timeout. Without Docker it returns `UNAVAILABLE` and the agent is told not to report test results. |
+| `run_pytest(test_path)` | extra | Runs the target's tests **only inside a locked-down Docker container**: read-only mount, no extra Linux privileges, memory, CPU and process limits, and a timeout. Without Docker it returns `UNAVAILABLE` and the agent is told not to report test results. |
 
 The agent also has three control tools: `report_violation`, `retract_violation` and `finish`.
 
@@ -219,8 +222,11 @@ The LLM may create a new id in the same style when nothing in the catalogue fits
 - Secret values never appear. Evidence says *that* a key is hardcoded, not what it is.
 - The report is written atomically (to a temp file, then renamed), so a crash never leaves a half-written file.
 
-[`sample_report.json`](sample_report.json) is a real output of this agent, and
-[`sample_report.trace.jsonl`](sample_report.trace.jsonl) is the trace from the same run.
+[`sample_report.json`](sample_report.json) is a real, unedited output of this agent auditing
+[we45/Vulnerable-Flask-App](https://github.com/we45/Vulnerable-Flask-App), a project made insecure on
+purpose for security training. It was produced with Gemini's free tier (`gemini-3.5-flash-lite`).
+[`sample_report.trace.jsonl`](sample_report.trace.jsonl) is the trace from the same run: every reasoning
+step and tool call, 21 turns in total. A stronger model generally finds more.
 
 ## 7. Accuracy: avoiding false positives
 
