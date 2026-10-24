@@ -38,11 +38,9 @@ _URL_CREDS = re.compile(r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)(?P<user>[^:/\s@
 # name = "value" / name: value / NAME=value where name looks secret-ish.
 _SECRET_NAME = r"(?:pass(?:word|wd)?|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|auth|credential|client[_-]?secret)"
 _ASSIGNMENT = re.compile(
-    r"(?P<key>[\w.-]*" + _SECRET_NAME + r"[\w.-]*)"
+    r"(?P<key>[\w.-]*" + _SECRET_NAME + r"[\w.-]*(?:['\"]?\])?)"  # also config['SECRET_KEY']
     r"(?P<sep>\s*[:=]\s*|\s*=>\s*)"
-    r"(?P<quote>['\"]?)"
-    r"(?P<value>[^'\"\s,;)}#]{4,})"
-    r"(?P=quote)",
+    r"(?:(?P<quote>['\"])(?P<qvalue>[^'\"\n]{4,})(?P=quote)|(?P<value>[^'\"\s,;)}#]{4,}))",
     re.IGNORECASE,
 )
 
@@ -70,12 +68,13 @@ def _looks_like_reference(key: str, value: str) -> bool:
 
 
 def _mask_assignment(match: re.Match) -> str:
-    value = match.group("value")
+    quote = match.group("quote") or ""
+    value = match.group("qvalue") if quote else match.group("value")
     if _SAFE_VALUE.match(value) or value.startswith(("os.", "settings.", "config.", "self.", "env.")):
         return match.group(0)
-    if not match.group("quote") and _looks_like_reference(match.group("key"), value):
+    if not quote and _looks_like_reference(match.group("key"), value):
         return match.group(0)
-    return f"{match.group('key')}{match.group('sep')}{match.group('quote')}{PLACEHOLDER}{match.group('quote')}"
+    return f"{match.group('key')}{match.group('sep')}{quote}{PLACEHOLDER}{quote}"
 
 
 def redact(text: str) -> str:

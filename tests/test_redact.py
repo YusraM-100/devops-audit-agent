@@ -28,3 +28,10 @@ def test_url_credentials_and_private_keys():
     assert "pw123456" not in redact("postgres://admin:pw123456@db:5432/x")
     key = "-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----"
     assert "MIIabc" not in redact(key)
+
+
+def test_dict_style_keys_and_values_with_spaces():
+    assert redact("app.config['SECRET_KEY_HMAC_2'] = 'am0r3C0mpl3xK3y'") == "app.config['SECRET_KEY_HMAC_2'] = '[REDACTED]'"
+    assert "R~X@H" not in redact("app.secret_key = 'F12Zr47j3yX R~X@H!jmM]Lwf/,?KT'")
+    assert redact("password = db.Column(db.String(80))") == "password = db.Column(db.String(80))"
+    assert redact("password = request.form['password']") == "password = request.form['password']"
