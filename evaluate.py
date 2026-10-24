@@ -43,9 +43,9 @@ def main(argv=None) -> int:
     p.add_argument("--report", required=True)
     p.add_argument("--expected", required=True)
     args = p.parse_args(argv)
-    with open(args.report) as fh:
+    with open(args.report, encoding="utf-8") as fh:
         reported = json.load(fh)["violations"]
-    with open(args.expected) as fh:
+    with open(args.expected, encoding="utf-8") as fh:
         expected = json.load(fh)["violations"]
     print(json.dumps(score(reported, expected), indent=2))
     return 0

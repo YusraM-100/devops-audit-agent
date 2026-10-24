@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,12 +18,13 @@ def make_repo(root: Path, files: dict[str, str], commits: list[dict[str, str | N
     """Create a git repo. ``files`` is the final state; ``commits`` are earlier states (None deletes a file)."""
     root.mkdir(parents=True, exist_ok=True)
     env = {
+        **os.environ,
         "GIT_AUTHOR_NAME": "Test",
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "Test",
         "GIT_COMMITTER_EMAIL": "t@example.com",
-        "PATH": "/usr/bin:/bin:/usr/local/bin",
-        "HOME": str(root),
+        "GIT_CONFIG_GLOBAL": os.devnull,  # ignore the developer's own git settings (signing, autocrlf, ...)
+        "GIT_CONFIG_NOSYSTEM": "1",
     }
 
     def run(*args):
@@ -36,7 +38,7 @@ def make_repo(root: Path, files: dict[str, str], commits: list[dict[str, str | N
                 path.unlink(missing_ok=True)
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
+            path.write_text(content, encoding="utf-8", newline="\n")
         run("add", "-A")
         run("commit", "-q", "-m", f"commit {i}", "--allow-empty")
     return root

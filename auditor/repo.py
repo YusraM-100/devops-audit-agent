@@ -9,7 +9,9 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -113,10 +115,22 @@ def _describe(url: str, path: Path) -> RepoInfo:
     return info
 
 
+def _make_writable_and_retry(func, target, _exc_info) -> None:
+    """Windows marks git object files read-only, which makes rmtree fail; clear the flag and retry."""
+    try:
+        os.chmod(target, stat.S_IWRITE)
+        func(target)
+    except OSError:
+        pass
+
+
 def cleanup(path: Path) -> None:
     """Delete the temporary clone (``path`` may be the repo or its parent)."""
     path = Path(path)
     if path.name == "repo" and path.parent.name.startswith("devops-audit-"):
         path = path.parent
     if path.name.startswith("devops-audit-"):
-        shutil.rmtree(path, ignore_errors=True)
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=_make_writable_and_retry)
+        else:
+            shutil.rmtree(path, onerror=_make_writable_and_retry)

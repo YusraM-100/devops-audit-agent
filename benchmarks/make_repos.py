@@ -129,10 +129,12 @@ def build(root: Path) -> None:
             for rel, content in state.items():
                 path = repo / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, encoding="utf-8", newline="\n")
             subprocess.run(["git", "add", "-A", "-f"], cwd=repo, check=True)
             subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", f"change {i + 1}"], cwd=repo, check=True, env=env)
-        (root / f"{name}.expected.json").write_text(json.dumps({"repository": str(repo), "violations": spec["expected"]}, indent=2))
+        (root / f"{name}.expected.json").write_text(
+            json.dumps({"repository": str(repo), "violations": spec["expected"]}, indent=2), encoding="utf-8"
+        )
         print(f"created {repo} ({len(spec['expected'])} known violations)")
 
 

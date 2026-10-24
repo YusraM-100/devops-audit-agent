@@ -15,5 +15,5 @@ def test_benchmark_repos_build(tmp_path):
     rule_ids = {r[0] for r in RULES}
     for name in ("obvious", "subtle", "healthy"):
         assert (tmp_path / name / ".git").is_dir()
-        for v in json.loads((tmp_path / f"{name}.expected.json").read_text())["violations"]:
+        for v in json.loads((tmp_path / f"{name}.expected.json").read_text(encoding="utf-8"))["violations"]:
             assert v["rule_id"] in rule_ids and v["category"] in CATEGORIES
