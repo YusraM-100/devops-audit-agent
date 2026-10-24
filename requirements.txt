@@ -1,0 +1,6 @@
+# Runtime dependencies (exact versions so every install behaves the same)
+openai==3.37.0          # OpenAI SDK, also used for OpenAI-compatible APIs (Gemini, Groq, Ollama...)
+anthropic==2.3.0        # Anthropic SDK (Claude)
+PyYAML==6.0.3           # parsing GitHub Actions workflow files
+python-dotenv==1.2.4    # loading API keys from a local .env file
+ruff==0.17.2            # linter used by the run_ruff inspection tool (static, never executes code)

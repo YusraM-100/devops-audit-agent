@@ -1,0 +1,16 @@
+[project]
+name = "devops-audit-agent"
+version = "1.0.0"
+description = "An LLM-driven agent that audits GitHub repositories for DevOps best-practice violations"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]  # long rule descriptions are clearer on one line; `ruff format` handles code width
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

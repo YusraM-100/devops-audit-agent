@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Secrets: real keys live only in .env on your own machine
+.env
+.env.*
+!.env.example
+
+# Agent outputs (sample_report.json is committed on purpose)
+report.json
+*.trace.jsonl
+!sample_report.trace.jsonl
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
