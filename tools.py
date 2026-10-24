@@ -33,6 +33,13 @@ MAX_FILE_BYTES = 1_000_000
 MAX_READ_LINES = 400
 
 
+SENSITIVE_FILE = re.compile(
+    r"^(\.env(\..+)?|id_rsa|id_dsa|id_ecdsa|id_ed25519|.*\.pem|.*\.key|.*\.p12|.*\.pfx|credentials\.json|"
+    r"service[-_]account.*\.json|\.npmrc|\.pypirc|\.netrc|\.htpasswd|secrets?\.(ya?ml|json|env))$",
+    re.IGNORECASE,
+)
+
+
 class ToolError(Exception):
     """A tool was called with bad arguments or could not complete."""
 
@@ -116,6 +123,18 @@ class RepoTools:
                 "type": "object",
                 "properties": {"pattern": {"type": "string", "description": "Regular expression (POSIX extended)."}},
                 "required": ["pattern"],
+            },
+        },
+        {
+            "name": "scan_secrets",
+            "description": (
+                "Secret scanner: finds lines that look like hardcoded credentials (API keys, tokens, passwords, private keys, "
+                "credentials in URLs) in current files AND in git history, plus secret-bearing files such as .env or id_rsa. "
+                "Values are always shown as [REDACTED]. Verify each hit (placeholder? test fixture?) before reporting."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"include_history": {"type": "boolean", "description": "Also scan all commits (default true)."}},
             },
         },
         {
@@ -342,6 +361,49 @@ class RepoTools:
             return f"Pattern /{pattern}/ never appears in any commit."
         return "Matches in history (+ added, - removed):\n" + "\n".join(out[:300])
 
+    def scan_secrets(self, include_history: bool = True) -> str:
+        hits, current = [], set()
+        for rel in self.tracked_files():
+            name = Path(rel).name
+            if SENSITIVE_FILE.search(name) and not re.search(r"example|sample|template|dist$", name, re.IGNORECASE):
+                hits.append(f"{rel}: secret-bearing file is committed")
+            try:
+                data = (self.root / rel).read_bytes()[:MAX_FILE_BYTES]
+            except OSError:
+                continue
+            if _is_binary(data):
+                continue
+            for n, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+                if len(line) > 1000:  # minified files: skip
+                    continue
+                masked = redact(line)
+                if masked != line:
+                    current.add(masked.strip())
+                    hits.append(f"{rel}:{n}: {masked.strip()[:200]}")
+        out = [
+            "Each hit is a real-looking literal (placeholders, env lookups and variable references are never redacted).",
+            f"Current files: {len(hits)} likely hardcoded secret(s)",
+        ] + hits[:100]
+        if include_history and (self.root / ".git").exists():
+            result = git(
+                ["log", "--all", "-p", "--unified=0", "--no-color", "--format=@@commit %h %ad", "--date=short"],
+                cwd=self.root,
+                timeout=self.command_timeout * 2,
+            )
+            commit, file, history = "", "", []
+            for line in result.stdout.splitlines()[:300_000]:
+                if line.startswith("@@commit "):
+                    commit = line[9:]
+                elif line.startswith("+++ b/"):
+                    file = line[6:]
+                elif line.startswith("+") and not line.startswith("+++") and len(line) < 1000:
+                    masked = redact(line[1:])
+                    if masked != line[1:] and masked.strip() not in current:
+                        history.append(f"commit {commit} {file}: {masked.strip()[:160]} (no longer in current files)")
+            out.append(f"\nGit history: {len(history)} secret-like line(s) that were committed and later removed")
+            out += history[:100]
+        return "\n".join(out)
+
     def git_status(self, include_tags: bool = True) -> str:
         if not (self.root / ".git").exists():
             return "Not a git repository."
@@ -386,7 +448,7 @@ class RepoTools:
             return msg
         report = []
         for wf in workflows:
-            report.append(_summarise_workflow(wf, (self.root / wf).read_text(errors="replace")))
+            report.append(_summarise_workflow(wf, (self.root / wf).read_text(encoding="utf-8", errors="replace")))
         if other_ci:
             report.append(f"Other CI/automation config present: {', '.join(other_ci)}")
         return "\n\n".join(report)
@@ -399,7 +461,7 @@ class RepoTools:
             return "No Python files to lint."
         args = [ruff, "check", ".", "--no-cache", "--output-format=concise", "--exit-zero", "--no-fix"]
         has_config = any(f in ("ruff.toml", ".ruff.toml") for f in self.tracked_files()) or (
-            "[tool.ruff" in (self.root / "pyproject.toml").read_text(errors="replace")
+            "[tool.ruff" in (self.root / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
             if (self.root / "pyproject.toml").is_file()
             else False
         )

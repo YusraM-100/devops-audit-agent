@@ -77,7 +77,7 @@ def test_inspect_workflows_none(healthy_repo):
 
 def test_run_pytest_never_runs_on_host_without_sandbox(bad_repo, monkeypatch):
     monkeypatch.setenv("AUDIT_DISABLE_PYTEST", "1")
-    (bad_repo / "test_x.py").write_text("def test_x():\n    assert False\n")
+    (bad_repo / "test_x.py").write_text("def test_x():\n    assert False\n", encoding="utf-8")
     tools = RepoTools(bad_repo)
     tools._files = tools.tracked_files() + ["test_x.py"]
     assert tools.call("run_pytest", {}).startswith("UNAVAILABLE")
@@ -100,3 +100,19 @@ def test_tools_do_not_modify_repository(bad_repo):
         tools.call(name, args)
     after = subprocess.run(["git", "status", "--porcelain"], cwd=bad_repo, capture_output=True, text=True).stdout
     assert before == after == ""
+
+
+def test_scan_secrets_finds_current_and_removed_secrets_without_values(bad_repo):
+    out = RepoTools(bad_repo).call("scan_secrets", {})
+    assert "app.py:3:" in out
+    assert "secrets.env" in out and "no longer in current files" in out
+    assert FAKE_KEY not in out and "hunter2hunter2" not in out
+
+
+def test_scan_secrets_flags_committed_env_file_but_not_example(tmp_path):
+    from conftest import make_repo
+
+    repo = make_repo(tmp_path / "r", {".env": "DEBUG=1\n", ".env.example": "API_KEY=your-key-here\n"})
+    out = RepoTools(repo).call("scan_secrets", {"include_history": False})
+    assert ".env: secret-bearing file is committed" in out
+    assert ".env.example" not in out
