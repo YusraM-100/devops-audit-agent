@@ -378,4 +378,3 @@ found). A good auditor needs both.
 
 ---
 
-Built as Assignment 2 for *MLOps & Production AI Engineering*. MIT licensed.
